@@ -1,0 +1,391 @@
+{
+  "name": "LeadGen AI Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "leadgen",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook (GET)",
+      "id": "851d1932-2265-455e-b50c-4b1232fd56fd",
+      "webhookId": "4b8a032d-d780-4b44-803e-e8f4beeea4c4"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn [\n    {\"json\": {\n        \"companyName\": \"TechNova Solutions\",\n        \"website\": \"https://technova.example\",\n        \"employeeCount\": 120,\n        \"industry\": \"Software\",\n        \"location\": \"Bengaluru, IN\"\n    }},\n    {\"json\": {\n        \"companyName\": \"GreenMakers Manufacturing\",\n        \"website\": \"https://greenmakers.example\",\n        \"employeeCount\": 80,\n        \"industry\": \"Manufacturing\",\n        \"location\": \"Pune, IN\"\n    }},\n    {\"json\": {\n        \"companyName\": \"AeroLogix Systems\",\n        \"website\": \"https://aerologix.example\",\n        \"employeeCount\": 210,\n        \"industry\": \"Logistics\",\n        \"location\": \"Hyderabad, IN\"\n    }},\n]\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "name": "Seed Companies",
+      "id": "c138c077-ae39-475f-8c4e-fbc42a60ee59"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# Read query params from the Webhook node's output (Python helper `_`)\n# Equivalent to: $items(\"Webhook (GET)\", 0, 0)[0].json.query in JS\nwebhook_first = _('Webhook (GET)').first() or {}\nqs = (webhook_first.get('json') or {}).get('query') or {}\n\ndef to_int(v, default):\n    try:\n        # Handle '', None gracefully\n        return int(v) if str(v).strip() != \"\" else default\n    except Exception:\n        return default\n\nsize_min = to_int(qs.get('sizeMin'), 0)\nsize_max = to_int(qs.get('sizeMax'), 999999)\nindustry_q = (qs.get('industry') or '').lower()\nlocation_q = (qs.get('location') or '').lower()\n\nout = []\nfor it in items:\n    j = it.get('json', {})\n    employee_count = int(j.get('employeeCount', 0))\n    industry_val = str(j.get('industry', '')).lower()\n    location_val = str(j.get('location', '')).lower()\n\n    ok_size = (employee_count >= size_min) and (employee_count <= size_max)\n    ok_ind = (industry_q in industry_val) if industry_q else True\n    ok_loc = (location_q in location_val) if location_q else True\n\n    if ok_size and ok_ind and ok_loc:\n        out.append(it)\n\nreturn out\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "name": "Filter by Query Params",
+      "id": "3ed14e52-3487-496c-b599-993c2ee5cb86"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import re\n\ndef add_insights(j):\n    industry = j.get('industry', '') or ''\n    employee_count = int(j.get('employeeCount', 0))\n    location = j.get('location', '') or ''\n\n    bullets = []\n    if re.search(r'software', industry, re.I):\n        bullets += [\n            \"SaaS roadmap includes AI/ML modules\",\n            \"Active in developer ecosystem; likely uses CI/CD\",\n        ]\n    elif re.search(r'manufact', industry, re.I):\n        bullets += [\n            \"Sustainable, lean operations focus\",\n            \"Potential need for shop-floor IoT/SCADA integrations\",\n        ]\n    elif re.search(r'logistic', industry, re.I):\n        bullets += [\n            \"Fleet optimization & real-time tracking\",\n            \"Likely evaluating warehouse automation\",\n        ]\n    else:\n        bullets += [\"Expanding digital footprint\"]\n\n    if employee_count > 150:\n        bullets.append(\"Mid-market team with scaling pains\")\n\n    if re.search(r'\\bIN\\b|India', location, re.I):\n        bullets.append(\"Operating in India with regional growth\")\n\n    return bullets[:3]\n\nfor item in items:\n    j = item.get('json', {})\n    j['insights'] = add_insights(j)\n    item['json'] = j\n\nreturn items\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "name": "Mock Insights",
+      "id": "0009199c-d582-4cf8-aaa3-bb3bb4a9fd59"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Company: {{$json.companyName}}\nWebsite: {{$json.website}}\nIndustry: {{$json.industry}}\nEmployees: {{$json.employeeCount}}\nInsights:\n{{ $json.insights.join('\\n') }}\n\nWrite a concise outreach email (80–120 words) in a consultative and professional tone. \nThe email should naturally reference the provided insights and be structured as a clear, personalized message to the company. \nConclude the email with the following signature block:\n\nWarm Regards,\nRohith Dilip\nWednesday Solutions\n",
+        "options": {
+          "systemMessage": "You are a professional B2B sales assistant. \nReturn output as strict JSON only (no prose, no backticks). \nSchema: {\"company\":\"string\",\"subject\":\"string\",\"body\":\"string\"}\nEnsure \"body\" has 80–120 words and the JSON is properly escaped and valid.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        0
+      ],
+      "name": "AI Agent",
+      "id": "84d0c8fd-7405-43d9-ade5-23a47f6b7201"
+    },
+    {
+      "parameters": {
+        "model": "moonshotai/kimi-k2-instruct",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        968,
+        224
+      ],
+      "name": "Groq Chat Model",
+      "id": "f194994b-15a5-4fb4-be1c-d9d755530b16",
+      "credentials": {
+        "groqApi": {
+          "id": "PRksXihPv1M2coBn",
+          "name": "Groq account Rohith's"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of items) {\n  let out = item.json.output;\n  let parsed = {};\n\n  try {\n    if (typeof out === 'string') {\n      parsed = JSON.parse(out);\n    } else if (typeof out === 'object' && out !== null) {\n      parsed = out;\n    } else {\n      parsed = {};\n    }\n  } catch (e) {\n    item.json.parseError = e.message;\n  }\n\n  if (parsed.company) item.json.company = parsed.company;\n  if (parsed.subject) item.json.subject = parsed.subject;\n  if (parsed.body) item.json.body = parsed.body;\n  if (parsed.tone) item.json.tone = parsed.tone;\n  if ('wordCount' in parsed) item.json.wordCount = parsed.wordCount;\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "name": "Parse Agent Output",
+      "id": "c1c1ff66-4d06-4992-b205-bdfc3a257cf7"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        0
+      ],
+      "name": "Respond JSON",
+      "id": "0200b7eb-6a7b-4a66-99ac-d57226db8dbb"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "68254222-894c-4d6d-b53b-6968668dc86b",
+              "name": "company",
+              "value": "={{ $json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "7328f661-99e2-4b7c-9bcf-b407361b50b0",
+              "name": "subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "66fc0515-e426-4b1a-8101-17feba521100",
+              "name": "body",
+              "value": "={{ $json.body }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        0
+      ],
+      "id": "4c30d2bd-bdf8-492e-9212-17d582f20dab",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1GJhgMO3I8bvwC9cjrr3SVVvym9pAVd50xew4y5jZsx0",
+          "mode": "list",
+          "cachedResultName": "Generated Insights",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1GJhgMO3I8bvwC9cjrr3SVVvym9pAVd50xew4y5jZsx0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1GJhgMO3I8bvwC9cjrr3SVVvym9pAVd50xew4y5jZsx0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Name": "={{ $json.company }}",
+            "Subject": "={{ $json.subject }}",
+            "Body For Email": "={{ $json.body }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Subject",
+              "displayName": "Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Body For Email",
+              "displayName": "Body For Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1696,
+        0
+      ],
+      "id": "d3242273-561b-43db-ac88-d52f94ee34cb",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RQ5cyWFC7PaVFhsC",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook (GET)": [
+      {
+        "json": {
+          "headers": {
+            "host": "magik-6d.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "203.145.52.54",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "IN",
+            "cf-ray": "97bca2ef705dc1a1-BLR",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "cookie": "rl_page_init_referrer=RudderEncrypt%3AU2FsdGVkX19uKgPBG2RUKu3RxvXq8ECPoVDNKh%2By4wA%3D; rl_page_init_referring_domain=RudderEncrypt%3AU2FsdGVkX19COhsU1ZbwQxi84kZKS%2BgQ1O5nSIBOXn0%3D; _fbp=fb.1.1752890488548.986717759185294541; _ga=GA1.1.525948835.1752890489; _gcl_au=1.1.827627235.1752895036; _ga_0SC4FF2FH9=GS2.1.s1757050326$o5$g1$t1757051164$j60$l0$h0; rl_anonymous_id=RudderEncrypt%3AU2FsdGVkX1%2FTx47uapKAJTXUiBrzv6nPJr3%2F8LIyJCLeYWQRIrp1pyLITda0E3EyRQCoz4l8qgUvyZEc2fqBBA%3D%3D; rl_user_id=RudderEncrypt%3AU2FsdGVkX1%2B5X9wMOdKkJ8Nc4TMF6JH4wBD9yU0iroU6WVKY4NsSzYt2dF%2FAbWCwmZKIKxwW3h9VBjvCAfLFJr8MjYKZtOJ%2BUjO16x6tQIsJl44mOWXbZB0Smb2wEhOPPY671tSodLmDNajEG0k%2B6VOboHEL8hzqXk6WzLyBWcU%3D; rl_trait=RudderEncrypt%3AU2FsdGVkX1%2FMj%2BaflQy5ad5TpFkxo48LTKyGQaOu6NOgiqSIb6ou95gpc%2B0lV%2FmvBWg9QaXsTWdLdi0e%2FGh4mUgprVwqqAR1YK%2Ff7kUJbVWs5BkVZ1WCJleKrovTUgOA0R1tO8V2%2BjXa7AX9hcgfji84h87PJkkhZivfRZo3aDM%3D; n8n_anonymous_id=68f0fa27-3aeb-4517-88f0-ddaf5e87830c; rl_session=RudderEncrypt%3AU2FsdGVkX19Bnvlzm7LwWfHXDUvaFTYaroMEZsqIrzXAbkhQwtOQ2nGTsWDyMiEAdyZu8jOPibCZL0WJzi5UXb8QlmgRPYYZ1vE2k6vT77TjW7uPSvRI57V7XlzEbJKbbF0GJyZhXvWIj6yUBvkXwg%3D%3D; ph_phc_4URIAm1uYfJO7j8kWSe0J8lc8IqnstRLS7Jx8NcakHo_posthog=%7B%22distinct_id%22%3A%224c20a8bbbc59ab428290f799b14a4f22c69ae4537c021d9eba8d75fe0ed79970%2364c32f67-64f1-4e0c-b523-61fca13abe49%22%2C%22%24sesid%22%3A%5B1757061329679%2C%2201991904-3312-750a-8e8e-c3d2e3f1c708%22%2C1757061329679%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Frockstar28.app.n8n.cloud%2Fworkflow%2Fnew%22%7D%7D",
+            "priority": "u=0, i",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "x-forwarded-for": "203.145.52.54, 172.68.79.137",
+            "x-forwarded-host": "magik-6d.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-24-5cd9cc5d7f-jfcwn",
+            "x-is-trusted": "yes",
+            "x-real-ip": "203.145.52.54"
+          },
+          "params": {},
+          "query": {},
+          "webhookUrl": "https://magik-6d.app.n8n.cloud/webhook/leadgen",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook (GET)": {
+      "main": [
+        [
+          {
+            "node": "Seed Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seed Companies": {
+      "main": [
+        [
+          {
+            "node": "Filter by Query Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter by Query Params": {
+      "main": [
+        [
+          {
+            "node": "Mock Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Insights": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Output": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "88a3692d-77f9-4369-8d15-1842f15ac52f",
+  "meta": {
+    "instanceId": "4c20a8bbbc59ab428290f799b14a4f22c69ae4537c021d9eba8d75fe0ed79970"
+  },
+  "id": "DJxVUPyAoxJRAAXH",
+  "tags": []
+}
